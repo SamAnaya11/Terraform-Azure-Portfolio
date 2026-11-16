@@ -1,0 +1,21 @@
+# =============================================================================
+# terraform.tfvars.example
+# Ejemplo de valores para las variables. Este archivo SÍ se sube a Git.
+#
+# Uso (PowerShell):
+#   Copy-Item terraform.tfvars.example terraform.tfvars
+# y edita terraform.tfvars (ese NO se sube a Git, está en .gitignore).
+# Terraform lee terraform.tfvars automáticamente.
+# =============================================================================
+
+prefijo = "portfolio"
+entorno = "dev"
+
+# Opcionales (si no los pones, se usa el default de variables.tf)
+ubicacion        = "spaincentral"
+tipo_replicacion = "LRS" # no cambiar: ZRS reemplaza la cuenta y GRS/ZRS cuestan más
+
+# Etiquetas extra (descomenta para probarlo: el plan mostrará un cambio "in-place")
+# etiquetas_extra = {
+#   propietario = "tu-nombre"
+# }

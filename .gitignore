@@ -1,0 +1,47 @@
+# =============================================================
+# .gitignore - Lo que NUNCA debe subirse a Git
+# =============================================================
+
+# Carpeta local de Terraform (providers descargados, módulos, caché)
+.terraform/
+**/.terraform/
+
+# Archivos de estado: contienen IDs, nombres y a veces CLAVES en texto plano
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Planes guardados con "terraform plan -out=..." (pueden contener datos sensibles)
+*.tfplan
+*.plan
+
+# Archivos de variables con datos reales.
+# Se sube SOLO el ejemplo: terraform.tfvars.example
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Overrides locales
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Logs y configuración local del CLI
+crash.log
+crash.*.log
+.terraformrc
+terraform.rc
+
+# Variables de entorno / secretos
+.env
+*.env
+
+# Sistema operativo y editores
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# IMPORTANTE: .terraform.lock.hcl SÍ se sube (fija las versiones exactas de los providers)

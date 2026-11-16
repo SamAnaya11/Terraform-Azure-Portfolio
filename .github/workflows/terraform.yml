@@ -1,0 +1,123 @@
+# =============================================================================
+# .github/workflows/terraform.yml
+# CI/CD de Terraform con OIDC (credencial federada, SIN secretos de Azure).
+#
+#   validar -> fmt + validate en cada push (no toca Azure)
+#   plan    -> terraform plan en cada push         (environment "plan")
+#   apply   -> solo en main y tras TU aprobación   (environment "dev")
+# =============================================================================
+name: Terraform
+
+on:
+  push: # cualquier rama (solo quien tiene permiso de escritura puede hacer push)
+  workflow_dispatch: # botón "Run workflow" en la pestaña Actions (validar + plan)
+  # Sin "pull_request" a propósito: en un repo público, los PRs desde forks
+  # no deben ejecutar nada contra tu Azure.
+
+# Permisos del token de GitHub: los mínimos
+permissions:
+  contents: read # leer el código
+  id-token: write # pedir el token OIDC (sin esto no hay login en Azure)
+
+# Una sola ejecución a la vez sobre el mismo state; las demás esperan en cola
+concurrency:
+  group: terraform-portfolio-dev
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.17.2"
+  TF_IN_AUTOMATION: "true" # salida más limpia para CI
+  TF_INPUT: "false" # nunca preguntar por consola: si falta algo, fallar
+
+  # Variables obligatorias (en GitHub no hay terraform.tfvars)
+  TF_VAR_prefijo: "portfolio"
+  TF_VAR_entorno: "dev"
+
+  # Login en Azure por OIDC. Los lee el provider azurerm y el backend.
+  # Van como Secrets para que GitHub los sustituya por *** en los logs.
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Formato y validación: no necesita Azure
+  # ---------------------------------------------------------------------------
+  validar:
+    name: Formato y validación
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v5
+
+      - name: Instalar Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform fmt -check (raíz y bootstrap)
+        run: terraform fmt -check -recursive
+
+      - name: terraform validate (raíz)
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: terraform validate (bootstrap)
+        working-directory: bootstrap
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+  # ---------------------------------------------------------------------------
+  # 2. Plan: en cada push, cualquier rama
+  # ---------------------------------------------------------------------------
+  plan:
+    name: Plan
+    needs: validar
+    runs-on: ubuntu-latest
+    environment: plan # subject del token: ...:environment:plan
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v5
+
+      - name: Instalar Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform init (backend remoto)
+        run: terraform init
+
+      - name: terraform plan
+        run: terraform plan -lock-timeout=5m
+
+  # ---------------------------------------------------------------------------
+  # 3. Apply: solo push a main, y el environment "dev" exige tu aprobación
+  # ---------------------------------------------------------------------------
+  apply:
+    name: Apply (main)
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: dev # subject: ...:environment:dev + required reviewers
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v5
+
+      - name: Instalar Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform init (backend remoto)
+        run: terraform init
+
+      # Se vuelve a planificar aquí (en vez de pasar el plan del job anterior como
+      # artifact) porque un archivo de plan contiene datos del state, como claves.
+      - name: terraform plan -out
+        run: terraform plan -lock-timeout=5m -out=tfplan
+
+      - name: terraform apply
+        run: terraform apply -lock-timeout=5m tfplan

@@ -1,0 +1,147 @@
+/* =========================================================
+   estilos.css - Estilos compartidos por index.html y 404.html
+   Diseño sencillo, limpio y responsive (sin frameworks)
+   ========================================================= */
+
+/* Colores en variables para cambiarlos en un solo sitio */
+:root {
+  --fondo: #f4f6f8;
+  --tarjeta: #ffffff;
+  --texto: #1f2933;
+  --texto-suave: #52606d;
+  --acento: #0b6bcb;
+  --borde: #e4e7eb;
+}
+
+/* Modo oscuro automático si el sistema lo usa */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #12161b;
+    --tarjeta: #1c2229;
+    --texto: #e4e7eb;
+    --texto-suave: #9aa5b1;
+    --acento: #5aa9ff;
+    --borde: #2d3640;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 2rem 1rem;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.6;
+}
+
+.tarjeta {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 2rem;
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+}
+
+.cabecera {
+  border-bottom: 1px solid var(--borde);
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.titular {
+  margin: 0.25rem 0 0;
+  color: var(--texto-suave);
+  font-size: 1.1rem;
+}
+
+a {
+  color: var(--acento);
+}
+
+/* Lista de proyectos sin viñetas */
+.proyectos ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.proyectos li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--borde);
+}
+
+.proyectos li:last-child {
+  border-bottom: none;
+}
+
+.proyectos li a {
+  font-weight: 600;
+}
+
+.proyectos li p {
+  margin: 0.25rem 0 0;
+  color: var(--texto-suave);
+}
+
+/* Enlaces de LinkedIn y GitHub como botones */
+.enlaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.enlaces a,
+.boton {
+  display: inline-block;
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--acento);
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.enlaces a:hover,
+.boton:hover {
+  background: var(--acento);
+  color: var(--tarjeta);
+}
+
+/* Página 404 */
+.centrado {
+  text-align: center;
+}
+
+.codigo-error {
+  font-size: 4rem;
+  color: var(--acento);
+}
+
+/* Móvil: menos relleno */
+@media (max-width: 480px) {
+  body {
+    padding: 1rem;
+  }
+
+  .tarjeta {
+    padding: 1.25rem;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+  }
+}
