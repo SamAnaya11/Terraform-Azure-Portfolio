@@ -1,0 +1,16 @@
+# =============================================================
+# .gitattributes - Finales de línea iguales en todos los clones
+# =============================================================
+# filemd5() calcula la huella de los archivos de web/ sobre sus bytes exactos.
+# Si Git convirtiera LF -> CRLF en Windows, la huella sería distinta en tu PC
+# y en el runner Linux de GitHub, y cada plan querría reemplazar los blobs.
+# Con esta regla, Git guarda y descarga SIEMPRE con LF, sin depender de
+# la configuración local (core.autocrlf) de cada persona.
+* text=auto eol=lf
+
+# Binarios: Git no debe tocarlos nunca
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary

@@ -57,15 +57,26 @@ El objetivo principal es que el usuario **entienda cada concepto**, no solo tene
   y key `portfolio-dev.tfstate`. En la Fase 4 la identidad de GitHub necesitará ese mismo rol.
 - Destruir en orden: primero la raíz, luego bootstrap (quitando antes `prevent_destroy`).
 
-## Estado actual
-- Fase 1: ✅ completada (desplegada en stportfoliohft32q, experimentos A/B/C, capturas 01-07).
-- Fase 2: ✅ completada (refactorización sin cambios, experimentos A-D, capturas 08-10b).
-- Fase 3: ✅ completada (Storage del state `stportfoliotfs283ojl`, state migrado, drift y bloqueo probados,
-  capturas 11-15). El state local antiguo está fuera del proyecto; `bootstrap/terraform.tfstate` sigue en local.
-- Fase 4: decisiones → repo PÚBLICO `Terraform-Azure-Portfolio`, identidad con Terraform en
-  `bootstrap/github_oidc.tf` (provider azuread ~> 3.0), apply en main con required reviewers (environment `dev`).
-  Archivos escritos: bootstrap/github_oidc.tf, variables/outputs/providers de bootstrap, `.github/workflows/terraform.yml`,
-  `resource_provider_registrations = "none"` en providers.tf raíz. Pendiente de que el usuario ejecute.
+## Estado final: ✅ PROYECTO COMPLETADO (las 4 fases)
+- Fase 1: ✅ desplegada en `stportfoliohft32q` (`rg-portfolio-dev`), experimentos A/B/C, capturas 01-07.
+- Fase 2: ✅ refactorización sin cambios, experimentos A-D, capturas 08-10b.
+- Fase 3: ✅ Storage del state `stportfoliotfs283ojl` (`rg-portfolio-tfstate`), state migrado, drift y bloqueo
+  probados, capturas 11-15. El state local antiguo está fuera del proyecto; `bootstrap/terraform.tfstate` sigue
+  en local (fuera de Git, con copia de seguridad aparte).
+- Fase 4: ✅ repo PÚBLICO `SamAnaya11/Terraform-Azure-Portfolio`. Identidad con Terraform en
+  `bootstrap/github_oidc.tf` (azuread ~> 3.0), subject con IDs inmutables (funcionó a la primera), environments
+  `plan` y `dev` (required reviewers + solo `main`), 3 secrets. Experimentos rama/PR/fmt hechos. Capturas
+  16, 18, 19b, 20-23 (no existen 17 ni 19).
+- Finales de línea: `core.autocrlf false` + `.gitattributes` (`* text=auto eol=lf`), porque `filemd5()` de los
+  blobs depende de los bytes exactos (Windows vs runner Linux).
+- Limitaciones documentadas en el README: una sola identidad para plan y apply; state de bootstrap local;
+  "Allow administrators to bypass" activado en `dev`; un solo entorno; sin dominio/CDN.
+
+## Si se retoma el proyecto
+- Cualquier cambio en `web/` o en los `.tf` se despliega con push a `main` + aprobación en GitHub.
+- Antes de cada commit: `terraform fmt -recursive`, búsqueda de GUIDs con `git grep --cached` y
+  `git ls-files --eol` (todo LF).
+- Mantener README y `docs/capturas/LEEME.md` sincronizados con los nombres reales de las capturas.
 
 ## Decisiones de la Fase 4
 - Environments de GitHub: `plan` (sin reglas, cualquier rama) y `dev` (solo `main` + required reviewers).

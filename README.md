@@ -1,10 +1,10 @@
 # Portafolio estático en Azure con Terraform
 
 Web estática de portafolio (tarjeta de presentación) alojada en una **Azure Storage Account** con la
-función **static website**, creada íntegramente con **Terraform**. Es un proyecto de aprendizaje: cada
-archivo está comentado y cada concepto explicado.
+función **static website**, creada íntegramente con **Terraform** y desplegada con **GitHub Actions + OIDC**
+(sin secretos de Azure). Es un proyecto de aprendizaje: cada archivo está comentado y cada concepto explicado.
 
-> Estado: ✅ Fase 1 · ✅ Fase 2 · ✅ Fase 3 · 🔄 Fase 4 (CI/CD)
+> Estado: ✅ Fase 1 (básico) · ✅ Fase 2 (variables y outputs) · ✅ Fase 3 (state remoto) · ✅ Fase 4 (CI/CD con OIDC)
 
 ![Web publicada](docs/capturas/01_web_publicada.png)
 
@@ -13,60 +13,43 @@ archivo está comentado y cada concepto explicado.
 ## Arquitectura
 
 ```
-  Tu PC (PowerShell)
-  ┌──────────────────────────────┐
-  │ bootstrap/  (state LOCAL)    │──1) crea una vez──┐
-  │ raíz ./     (state REMOTO)   │──2) plan/apply ──┐│   usa tu sesión de "az login"
-  └──────────────────────────────┘                  ││
-                                                    ▼▼
-  ┌───────────────────────────────────────────────────────────────────┐
-  │ Suscripción de Azure · región spaincentral                        │
-  │                                                                   │
-  │  rg-portfolio-tfstate                (creado por bootstrap/)      │
-  │   └── stportfoliotfsXXXXXX  (Storage LRS, versionado, privada)    │
-  │         └── contenedor tfstate                                    │
-  │               └── portfolio-dev.tfstate  ◄── state de la web      │
-  │                                              (con bloqueo/lease)  │
-  │                                                                   │
-  │  rg-portfolio-dev                    (creado por la raíz ./)      │
-  │   └── stportfolioXXXXXX  (Storage Account, Standard LRS)          │
-  │         └── Static website: ON                                    │
-  │               └── contenedor $web                                 │
-  │                     ├── index.html                                │
-  │                     ├── 404.html                                  │
-  │                     └── estilos.css                               │
-  └──────────────────────────────┬────────────────────────────────────┘
-                                 │ HTTPS público
-                                 ▼
-        https://stportfolioXXXXXX.zNN.web.core.windows.net
-                          ▲
-                    Visitante (navegador)
+ ┌─ Tu PC (PowerShell · az login) ─┐        ┌─ GitHub (repo público) ─────────────────────────┐
+ │ bootstrap/  → state LOCAL       │  push  │ Actions: .github/workflows/terraform.yml        │
+ │ raíz ./     → state REMOTO      │───────►│  validar  fmt -check · validate   (sin Azure)   │
+ └──┬───────────────┬──────────────┘        │  plan     environment: plan (cualquier rama)    │
+    │ apply         │ plan / apply          │  apply    environment: dev  (main + aprobación) │
+    │ (bootstrap)   │ (raíz, en local)      └───────────────────┬─────────────────────────────┘
+    │               │                                           │ 1) token OIDC firmado por GitHub
+    │               │                                           ▼
+    │               │      ┌─ Microsoft Entra ID ───────────────────────────────────────────┐
+    ├───────────────┼─────►│ App registration "sp-portfolio-github-actions" + SP            │
+    │               │      │  credenciales federadas: repo:…@id/…@id:environment:plan | dev │
+    │               │      │  0 client secrets                                              │
+    │               │      └───────────────────┬────────────────────────────────────────────┘
+    │               │                          │ 2) token de Azure de corta duración
+    ▼               ▼                          ▼
+ ┌─ Suscripción de Azure · spaincentral ───────────────────────────────────────────────────────┐
+ │                                                                                             │
+ │  rg-portfolio-tfstate                                      (creado por bootstrap/)          │
+ │   └─ stportfoliotfsXXXXXX   Storage LRS · privada · versionado · soft delete 7 días         │
+ │        │                    prevent_destroy                                                 │
+ │        └─ tfstate/portfolio-dev.tfstate   ◄── state de la web (lease = bloqueo)             │
+ │        RBAC: Storage Blob Data Contributor → tu usuario y la identidad de GitHub            │
+ │                                                                                             │
+ │  rg-portfolio-dev                                          (creado por la raíz ./)          │
+ │   │  RBAC: Contributor → identidad de GitHub                                                │
+ │   └─ stportfolioXXXXXX      Storage LRS · static website ON                                 │
+ │        └─ $web/   index.html · 404.html · estilos.css                                       │
+ │                                                                                             │
+ └───────────────────────────────────────────┬─────────────────────────────────────────────────┘
+                                             │ HTTPS público
+                                             ▼
+                  https://stportfolioXXXXXX.zNN.web.core.windows.net   ◄── visitante
 ```
 
-### CI/CD con GitHub Actions (Fase 4)
-
-```
-  git push (cualquier rama)
-        │
-        ▼
-  GitHub Actions ──────────────────────────────────────────────────────────────┐
-   ├─ validar   fmt -check · validate                  (no toca Azure)         │
-   ├─ plan      environment: plan  ─┐                                          │
-   └─ apply     environment: dev   ─┤ solo main · ⏸ espera aprobación          │
-                                    │                                          │
-                                    │ 1) token OIDC firmado por GitHub         │
-                                    │    subject: repo:…:environment:plan|dev  │
-                                    ▼                                          │
-  Entra ID: App registration "sp-portfolio-github-actions"                     │
-    └─ credenciales federadas (plan, dev) → comprueba issuer+audience+subject  │
-                                    │ 2) token de Azure de corta duración      │
-                                    ▼                                          │
-  Azure RBAC:  Contributor ─────────────► rg-portfolio-dev                     │
-               Storage Blob Data Contrib. ► stportfoliotfsXXXXXX (state) ◄─────┘
-```
-
-Sin contraseñas: GitHub solo guarda IDs (client, tenant, suscripción) como Secrets para que salgan
-como `***` en los logs.
+- **bootstrap/** crea, una sola vez, lo que la web necesita antes de existir: la Storage del state y la identidad de GitHub.
+- **La raíz** crea la web. Su state vive en Azure, así que tu PC y GitHub Actions comparten el mismo state, con bloqueo.
+- **Sin contraseñas**: GitHub guarda solo IDs (client, tenant y suscripción) como Secrets, para que salgan como `***` en los logs.
 
 ---
 
@@ -78,22 +61,24 @@ como `***` en los logs.
 │   └── terraform.yml          # CI/CD: validar, plan y apply (con aprobación)
 ├── bootstrap/                 # configuración aparte (state local)
 │   ├── providers.tf           # azurerm, random y azuread
-│   ├── variables.tf
+│   ├── variables.tf           # prefijo, región, entorno de la web, subject de GitHub
 │   ├── main.tf                # Storage del state + tu rol RBAC
 │   ├── github_oidc.tf         # identidad de GitHub: app, SP, credenciales federadas, roles
-│   └── outputs.tf
+│   ├── outputs.tf             # valores para backend.tf y para los GitHub Secrets
+│   └── .terraform.lock.hcl
 ├── providers.tf               # versión de Terraform y providers
 ├── backend.tf                 # dónde se guarda el state (Azure Storage)
 ├── variables.tf               # variables de entrada (con descripción y validación)
-├── locals.tf                  # valores calculados: nombres, etiquetas comunes
+├── locals.tf                  # valores calculados: nombres, etiquetas comunes, ID del contenedor
 ├── main.tf                    # recursos de Azure de la web
 ├── outputs.tf                 # valores de salida (URL de la web...)
 ├── terraform.tfvars.example   # ejemplo de valores (el terraform.tfvars real no se sube)
-├── .terraform.lock.hcl        # versiones exactas de los providers (sí se sube)
+├── .terraform.lock.hcl        # versiones exactas de los providers (Windows y Linux)
 ├── web/                       # index.html, 404.html, estilos.css
-├── docs/capturas/             # capturas de pantalla
-├── .gitignore
-├── CLAUDE.md
+├── docs/capturas/             # capturas de pantalla (índice en LEEME.md)
+├── .gitattributes             # finales de línea LF en todos los clones
+├── .gitignore                 # state, tfvars, .terraform/... nunca se suben
+├── CLAUDE.md                  # contexto y reglas de trabajo del proyecto
 └── README.md
 ```
 
@@ -144,7 +129,7 @@ como `***` en los logs.
 | **`terraform init -migrate-state`** | Copia el state actual al nuevo backend. |
 | **data source** | Bloque `data` que *lee* algo que ya existe sin crearlo (aquí, quién soy: `azurerm_client_config`). |
 | **lifecycle / prevent_destroy** | Seguro que hace fallar cualquier plan que intente borrar ese recurso. |
-| **use_azuread_auth + RBAC** | El backend entra con tu identidad de Entra ID y el rol *Storage Blob Data Contributor*, no con la clave de la cuenta. |
+| **use_azuread_auth + RBAC** | El backend entra con una identidad de Entra ID y el rol *Storage Blob Data Contributor*, no con la clave de la cuenta. |
 | **Versionado de blobs** | Azure guarda las versiones anteriores del state; si algo se rompe, se puede volver atrás. |
 | **Drift** | Diferencia entre el código/state y la realidad (un cambio hecho a mano). `terraform plan` la detecta y propone revertirla. |
 | **`-refresh-only`** | Muestra (y, si aplicas, acepta en el state) solo el drift, sin cambiar recursos. |
@@ -156,15 +141,16 @@ como `***` en los logs.
 | **Provider azuread** | Gestiona identidades de Entra ID (aplicaciones, service principals) a través de Microsoft Graph. |
 | **App registration + service principal** | La "cuenta de servicio" de GitHub en Azure: la app es la definición y el SP la instancia a la que se dan roles. |
 | **OIDC / credencial federada** | Azure confía en tokens firmados por GitHub si `issuer`, `audience` y `subject` coinciden. No hay contraseñas que guardar ni que caduquen. |
-| **Subject** | Identifica quién pide el token: `repo:<usuario>/<repo>:environment:<env>`. GitHub puede usar IDs inmutables (`usuario@id/repo@id`). Debe coincidir carácter a carácter. |
-| **GitHub Environments** | Agrupan reglas: solo rama `main` y *required reviewers* (aprobación manual) para `dev`. Además, dan un subject estable sin depender de la rama. |
-| **Mínimo privilegio** | Contributor solo sobre el RG de la web; Storage Blob Data Contributor solo sobre la Storage del state. |
+| **Subject con IDs inmutables** | Identifica quién pide el token. Aquí: `repo:<usuario>@<id>/<repo>@<id>:environment:<env>`. Con los IDs numéricos, un repo con el mismo nombre creado por otra persona no coincide. Debe ser idéntico carácter a carácter. |
+| **GitHub Environments** | Agrupan reglas: para `dev`, solo la rama `main` y *required reviewers* (aprobación manual). Además dan un subject estable, sin depender de la rama. |
+| **Roles con ámbito mínimo** | Contributor solo sobre el RG de la web y Storage Blob Data Contributor solo sobre la Storage del state; nada a nivel de suscripción. |
 | **`resource_provider_registrations = "none"`** | Evita que el provider intente registrar servicios a nivel de suscripción, para lo que la identidad de CI no tiene permisos. |
 | **`sensitive = true` (outputs)** | Oculta el valor en plan/apply; se lee a propósito con `terraform output -raw`. |
 | **`TF_VAR_*` en CI** | En el pipeline no hay `terraform.tfvars`: las variables obligatorias se pasan como variables de entorno. |
 | **`fmt -check` / `validate`** | Controles de calidad que no necesitan Azure y paran el pipeline antes de tocar nada. |
 | **`concurrency` + `-lock-timeout`** | Dos barreras contra ejecuciones simultáneas: la cola de GitHub y el lease del state. |
 | **`.terraform.lock.hcl` multiplataforma** | `terraform providers lock -platform=...` registra los hashes de Windows y Linux para que el runner de GitHub verifique los mismos providers. |
+| **Finales de línea (`.gitattributes`)** | `filemd5()` depende de los bytes exactos; forzar LF evita que Windows y Linux calculen huellas distintas para los mismos archivos. |
 
 ---
 
@@ -205,6 +191,16 @@ mostraría en los blobs.
 | **Drift** | En el portal: tag `manual = si`, *Error document path* → `error.html` y borrado de `index.html` | `plan -refresh-only` lista los cambios hechos fuera de Terraform; `plan` propone `1 to add, 2 to change`; `apply` lo revierte todo | Terraform compara la realidad con el código y propone volver al código: el blob borrado se recrea (`+`) y las tags y el static website se corrigen in-place (`~`). |
 | **Bloqueo** | `terraform apply` sin responder `yes` + un segundo `terraform plan` en otra ventana | El blob queda en *Lease state: Leased* y el segundo plan da `Error acquiring the state lock`; al responder `yes`, vuelve a *Available* | El lease del backend impide que dos operaciones escriban el state a la vez. |
 
+### Fase 4
+
+| Experimento | Qué se hizo | Resultado | Qué demuestra |
+|---|---|---|---|
+| **Identidad (bootstrap)** | `terraform apply` con `github_oidc.tf` y, antes del primer push, `github_subject_prefijo` con los IDs inmutables | `6 added` (app, SP, 2 credenciales federadas, 2 roles) y después `2 to change` (solo el `subject` de las 2 credenciales) | Las identidades también son código; un cambio de subject solo toca las credenciales. |
+| **Primer pipeline** | Primer push a `main` | validar, plan y apply en verde **sin `AADSTS700213`** | El subject con IDs inmutables coincidía exactamente con el que envía GitHub. |
+| **A – rama** | Push a `cambio-web` con un cambio en `index.html` | validar ✅ · plan ✅ (`index.html` `-/+`) · apply **skipped** | Cualquier rama planifica, pero solo `main` puede aplicar. |
+| **B – PR y merge** | Pull Request de `cambio-web` y merge a `main` | apply en espera hasta la aprobación; tras aprobarlo, la web muestra la frase nueva | El despliegue a `dev` exige una revisión humana. |
+| **C – formato** | `=` desalineado en `main.tf`, en la rama `prueba-fmt` | validar ❌ en `terraform fmt -check`; plan y apply no se ejecutan | Los controles baratos paran el pipeline antes de tocar Azure. |
+
 ---
 
 ## Comandos usados (PowerShell)
@@ -212,17 +208,16 @@ mostraría en los blobs.
 ```powershell
 # Autenticación y suscripción (el ID solo vive en la variable de entorno, nunca en el código)
 az login
+az login --tenant <ID_TENANT> --scope "https://graph.microsoft.com/.default"   # si el tenant exige MFA / Graph
 az account show --output table
 $env:ARM_SUBSCRIPTION_ID = az account show --query id --output tsv
 
-# Ciclo de Terraform
+# Fase 1: ciclo de Terraform
 terraform init
 terraform fmt
 terraform validate
 terraform plan -out fase1.tfplan
 terraform apply fase1.tfplan
-
-# Inspeccionar el state
 terraform state list
 terraform state show azurerm_storage_account.web
 
@@ -245,23 +240,28 @@ cd ..
 terraform init -migrate-state
 terraform plan -refresh-only                     # ver solo el drift
 
-# Fase 4: identidad de GitHub (bootstrap) y repo
-az login --tenant <ID_TENANT> --scope "https://graph.microsoft.com/.default"
+# Fase 4: identidad de GitHub (bootstrap), lock multiplataforma y repositorio
 cd bootstrap
 terraform init
 terraform providers lock -platform=windows_amd64 -platform=linux_amd64
 terraform plan
 terraform apply
-terraform output -raw github_client_id           # valores para los GitHub Secrets
+terraform output -raw github_client_id | Set-Clipboard   # valor del secret AZURE_CLIENT_ID
 cd ..
 terraform providers lock -platform=windows_amd64 -platform=linux_amd64
 terraform fmt -recursive
+Invoke-RestMethod https://api.github.com/repos/SamAnaya11/Terraform-Azure-Portfolio |
+  Select-Object id, @{ n = 'owner_id'; e = { $_.owner.id } }   # IDs para el subject
 git init -b main
+git config core.autocrlf false
+git status --untracked-files=all
+git check-ignore -v terraform.tfvars bootstrap/terraform.tfstate .terraform bootstrap/.terraform
 git add .
-git status
-git commit -m "Primer commit"
-git remote add origin https://github.com/<USUARIO>/Terraform-Azure-Portfolio.git
+git grep --cached -nE "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"   # debe salir vacío
+git commit -m "Portafolio estático en Azure con Terraform (fases 1-4)"
+git remote add origin https://github.com/SamAnaya11/Terraform-Azure-Portfolio.git
 git push -u origin main
+git ls-files --eol                               # comprobar que todo es i/lf w/lf
 
 # Borrar todo (ver "Cómo destruirlo": hay un orden)
 terraform destroy
@@ -279,10 +279,12 @@ terraform destroy
 | Estado | No hay archivo de estado: Azure es la fuente de verdad | Archivo de state (local o remoto, con bloqueo) |
 | "Huevo y gallina" del state | No existe (no hay state) | Hay que crear antes la Storage del backend |
 | Recursos nuevos de Azure | Disponibles desde el primer día | Dependen de que el provider `azurerm` los añada |
+| Identidades de Entra ID | Limitado (extensión de Microsoft Graph para Bicep) | Provider `azuread` |
 | Previsualizar cambios | `az deployment group what-if` | `terraform plan` |
 | Parámetros | `param` + archivo `.bicepparam` | `variable` + `terraform.tfvars` |
 | Borrar lo creado | No hay "destroy" directo (se borra el RG o se usan deployment stacks) | `terraform destroy` |
 | Detección de drift | Limitada (what-if) | `terraform plan` lo detecta comparando con el state |
+| CI/CD con OIDC | `azure/login` + `az deployment` | Variables `ARM_USE_OIDC` / `ARM_CLIENT_ID`... (provider y backend) |
 | Licencia | MIT (open source) | BSL 1.1 (alternativa abierta: OpenTofu) |
 | Cuándo elegirlo | Solo Azure, equipo Microsoft | Varias nubes o servicios, o cuando es el estándar del equipo |
 
@@ -322,7 +324,9 @@ terraform destroy
 ```
 
 Comprueba en el portal (*Resource groups*) que ya no existen `rg-portfolio-dev` ni `rg-portfolio-tfstate`, y en
-*Microsoft Entra ID > App registrations* que ya no está `sp-portfolio-github-actions`.
+*Microsoft Entra ID > App registrations* que ya no está `sp-portfolio-github-actions`. En GitHub puedes borrar
+también los 3 secrets y los environments `plan` y `dev` (Settings).
+
 Si destruyes el bootstrap primero, pierdes el state de la web y tendrás que borrar su RG a mano.
 
 **Recrear desde cero** (orden): `bootstrap` apply (el rol de GitHub sobre `rg-portfolio-dev` fallará porque el RG
@@ -338,10 +342,25 @@ aún no existe) → raíz `init` + `apply` → `bootstrap` apply otra vez (crea 
 | 2 | `Error: No configuration files` | Terraform se ejecutó desde la carpeta padre. Solo lee los `.tf` de la **carpeta actual** (no busca en subcarpetas) | `cd` a la carpeta del proyecto (`Terraform-Azure-Portfolio`, o `bootstrap/` para el bootstrap) y repetir el comando. |
 | 3 | Error `AADSTS50076` al ejecutar plan/apply | El tenant exige **MFA** y el token de la sesión de `az login` no la incluía | `az logout` y después `az login --tenant <ID_TENANT> --scope "https://graph.microsoft.com/.default"`, completando la MFA. El ID del tenant no se escribe en el repo. |
 | 4 | Aviso: `storage_account_name has been deprecated in favour of storage_container_id` (y lo mismo con `storage_container_name`) | En azurerm 4.x el blob debe identificar su contenedor por ID; los atributos antiguos se eliminan en la 5.0 | Usar `storage_container_id = "<ID de la Storage>/blobServices/default/containers/$web"` (en `locals.tf`). Al tener el mismo valor que ya guardaba el state, no reemplaza los blobs. |
+| 5 | Avisos de Git `LF will be replaced by CRLF` | Con `core.autocrlf = true`, Git en Windows convierte LF → CRLF al descargar archivos. `filemd5()` calcula la huella sobre los bytes exactos, así que `index.html` tendría una huella en tu PC (CRLF) y otra en el runner Linux (LF), y cada plan querría reemplazar los blobs | `git config core.autocrlf false` en el repo y `.gitattributes` con `* text=auto eol=lf`, que fuerza LF en cualquier clon sin depender de la configuración local. Se comprueba con `git ls-files --eol` (todo `i/lf w/lf`). Consejo: configurar el editor para guardar con LF. |
+| 6 | Riesgo de `AADSTS700213` por el formato del subject | GitHub puede enviar el subject con IDs inmutables (`repo:<usuario>@<id>/<repo>@<id>:...`); si la credencial federada usa el formato clásico (`repo:<usuario>/<repo>:...`), Azure rechaza el token | Resuelto **antes** del primer push: consultar los IDs en la API pública de GitHub (`Invoke-RestMethod https://api.github.com/repos/<usuario>/<repo>` → `id` y `owner.id`) y ponerlos en `github_subject_prefijo`. El primer pipeline funcionó a la primera. |
+| 7 | La regla de rama del environment `dev` (*Deployment branches and tags → main*) no se había guardado | Se perdió al configurar el environment; *Required reviewers* sí quedó activo | Añadida después (ver captura 18). El apply ya estaba protegido por dos capas: el `if:` del workflow (solo push a `main`) y la aprobación manual. Pero el `if:` está en el YAML, que cualquiera con permiso de escritura podría cambiar en su propia rama, y el subject de `dev` no incluye la rama. La regla de rama la aplica **GitHub, fuera del YAML**: ningún job de otra rama puede usar el environment `dev`. Es una **tercera capa** independiente del código. |
+
+---
+
+## Limitaciones conocidas y mejoras posibles
+
+- **Una sola identidad para `plan` y `apply`.** Las dos credenciales federadas pertenecen al mismo service principal (Contributor), y el environment `plan` no tiene reglas. Un job de cualquier rama con `environment: plan` tiene permisos de escritura, aunque el workflow solo ejecute `plan`. El riesgo es bajo, porque solo quien tiene permiso de escritura en el repo puede hacer push y los forks no ejecutan nada. La mejora sería una segunda identidad de solo lectura para el plan.
+- **El state de `bootstrap/` es local.** Está fuera de Git, con una copia de seguridad aparte. Se podría migrar a la propia Storage del state una vez creada.
+- **"Allow administrators to bypass configured protection rules"** está activado en el environment `dev`. Como administrador del repo, puedes saltarte la aprobación. Para una protección estricta, se desactiva.
+- **Un solo entorno (`dev`).** Las variables ya admiten `test` y `prod`: bastaría otro `key` de state, otro tfvars y otro environment de GitHub.
+- **Sin dominio propio ni CDN.** Azure Front Door añadiría dominio, HTTPS propio y caché, pero tiene coste.
 
 ---
 
 ## Capturas
+
+El índice completo está en [docs/capturas/LEEME.md](docs/capturas/LEEME.md).
 
 ### Fase 1
 
@@ -391,10 +410,31 @@ aún no existe) → raíz `init` + `apply` → `bootstrap` apply otra vez (crea 
 **Contenedor `tfstate`** con el blob `portfolio-dev.tfstate` en reposo (*Lease state: Available*):
 ![Contenedor tfstate](docs/capturas/13_contenedor_tfstate.png)
 
-**State bloqueado** durante un `apply` pendiente de confirmación (*Lease state: Leased*):
+**State bloqueado** mientras un `apply` espera la respuesta `yes` (*Lease state: Leased*):
 ![Lease bloqueado](docs/capturas/14_lease_bloqueado.png)
 
 **Drift detectado**: el plan quiere quitar la tag manual, devolver `error_404_document` a `404.html` y recrear `index.html`:
 ![Drift plan](docs/capturas/15_drift_plan.png)
 
-Ver [docs/capturas/LEEME.md](docs/capturas/LEEME.md) para las capturas pendientes de las siguientes fases.
+### Fase 4
+
+**State del bootstrap** con la identidad de GitHub: app, service principal, las 2 credenciales federadas y los 2 roles nuevos, junto a la Storage del state:
+![State del bootstrap](docs/capturas/16_bootstrap_oidc_state.png)
+
+**Environment `dev`** en GitHub: *Required reviewers* activado, *Prevent self-review* desactivado (para poder aprobar tus propios cambios) y solo la rama `main` permitida:
+![Environment dev](docs/capturas/18_github_environments.png)
+
+**`terraform init` en el runner**: el job *Plan* conecta con el backend remoto por OIDC, sin claves ni contraseñas:
+![Backend por OIDC](docs/capturas/19b_oidc_backend_init.png)
+
+**Apply aprobado**: tras el merge del PR, el job *Apply (main)* despliega en el environment `dev` después de la aprobación manual:
+![Apply aprobado](docs/capturas/20_aprobacion_apply.png)
+
+**Pipeline completo en verde** del merge a `main`: validar, plan y apply:
+![Pipeline verde](docs/capturas/21_pipeline_verde.png)
+
+**Push a una rama**: validar y plan en verde, y el apply se salta (*skipped*) porque no es `main`:
+![Rama solo plan](docs/capturas/22_rama_solo_plan.png)
+
+**Formato incorrecto**: `terraform fmt -check` falla en *Formato y validación* y el pipeline se para antes de tocar Azure:
+![fmt falla](docs/capturas/23_fmt_falla.png)
