@@ -1,10 +1,12 @@
 # Portafolio estático en Azure con Terraform
 
-Web estática de portafolio (tarjeta de presentación) alojada en una **Azure Storage Account** con la
-función **static website**, creada íntegramente con **Terraform** y desplegada con **GitHub Actions + OIDC**
-(sin secretos de Azure). Es un proyecto de aprendizaje: cada archivo está comentado y cada concepto explicado.
+Web estática de portafolio alojada en una Azure Storage Account (static website), creada íntegramente con Terraform y desplegada con GitHub Actions + OIDC, sin secretos de Azure guardados.
 
-> Estado: ✅ Fase 1 (básico) · ✅ Fase 2 (variables y outputs) · ✅ Fase 3 (state remoto) · ✅ Fase 4 (CI/CD con OIDC)
+🌐 **Web en vivo:** https://stportfoliohft32q.z43.web.core.windows.net/
+
+**Incluye:** state remoto con bloqueo, detección de drift, aprobación manual antes de cada apply y experimentos documentados con capturas.
+
+**Estado:** ✅ Fase 1 (básico) · ✅ Fase 2 (variables y outputs) · ✅ Fase 3 (state remoto) · ✅ Fase 4 (CI/CD con OIDC)
 
 ![Web publicada](docs/capturas/01_web_publicada.png)
 
