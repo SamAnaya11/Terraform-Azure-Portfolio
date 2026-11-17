@@ -1,17 +1,17 @@
 # CLAUDE.md – Contexto del proyecto
 
 ## Qué es
-Proyecto de **aprendizaje de Terraform**: web estática de portafolio (tarjeta de presentación)
+Proyecto **demostrativo de Terraform**: web estática de portafolio (tarjeta de presentación)
 alojada en una Azure Storage Account con "static website", creada 100 % con Terraform.
-El objetivo principal es que el usuario **entienda cada concepto**, no solo tener el código.
+El objetivo es mostrar buenas prácticas de IaC, con cada decisión documentada.
 
 ## Modo de trabajo (obligatorio)
-- **Modo aprendizaje**: antes de escribir cada archivo `.tf`, explicar en lenguaje sencillo qué hace
+- **Explicación previa**: antes de escribir cada archivo `.tf`, explicar con claridad qué hace
   cada bloque (provider, resource, variable, output, backend...).
 - **El usuario ejecuta TODOS los comandos** (terraform init/plan/apply/destroy, az ...).
   Claude escribe archivos y da los comandos explicados (qué hace cada parte, qué crea, si cuesta dinero).
   **Claude no ejecuta comandos de Terraform ni de Azure CLI.**
-- Trabajo **por fases**. Al terminar cada fase: parar, resumir lo aprendido, explicar cómo comprobarlo
+- Trabajo **por fases**. Al terminar cada fase: parar, resumir lo implementado, explicar cómo comprobarlo
   en el portal de Azure (**portal en inglés**: usar los nombres de menú en inglés) y esperar confirmación.
 - Terminal: **PowerShell en Windows** (comandos con sintaxis PowerShell: `$env:VAR = ...`, backtick para
   continuar líneas).
@@ -36,12 +36,12 @@ El objetivo principal es que el usuario **entienda cada concepto**, no solo tene
 - Nunca subir secretos, IDs de suscripción/tenant, `*.tfstate`, `*.tfvars` reales, `.terraform/`.
 - Nombres de archivos de la web **idénticos en todas partes** (Azure Storage y Linux distinguen mayúsculas):
   `index.html`, `404.html`, `estilos.css` (todo minúsculas).
-- Código sencillo, **comentado en español**, nivel junior.
+- Código claro y legible, **comentado en español**.
 - Web: solo HTML + CSS, sin frameworks ni JS innecesario. Marcadores tipo `[TU NOMBRE]`, `[TITULAR]`,
   `[ENLACE_PROYECTO_1]` para que el usuario rellene.
 
 ## Documentación
-- `README.md` en español: qué es, arquitectura (diagrama en texto), conceptos aprendidos, comandos,
+- `README.md` en español: qué es, arquitectura (diagrama en texto), prácticas de Terraform implementadas, comandos,
   tabla Bicep vs Terraform, costes, cómo destruirlo, problemas encontrados, capturas en `docs/capturas/`.
 - Actualizar el README al terminar cada fase.
 

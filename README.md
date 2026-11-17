@@ -86,11 +86,11 @@ Web estática de portafolio alojada en una Azure Storage Account (static website
 
 ---
 
-## Conceptos de Terraform aprendidos
+## Prácticas de Terraform implementadas
 
-### Fase 1 – Lo básico
+### Fase 1 – Infraestructura base
 
-| Concepto | Explicación sencilla |
+| Concepto | Descripción |
 |---|---|
 | **IaC** | Infraestructura descrita en archivos de texto, versionable en Git y repetible. |
 | **HCL** | El lenguaje de Terraform: bloques `tipo "etiqueta" { clave = valor }`. |
@@ -106,9 +106,9 @@ Web estática de portafolio alojada en una Azure Storage Account (static website
 | **ForceNew** | Atributos que el provider no puede cambiar en un recurso existente. Cambiarlos obliga a reemplazarlo (`# forces replacement`). |
 | **Deprecations** | Los providers avisan de atributos obsoletos antes de eliminarlos en la siguiente versión mayor. Hay que corregirlos a tiempo. |
 
-### Fase 2 – Ordenarlo
+### Fase 2 – Parametrización (variables, locals y outputs)
 
-| Concepto | Explicación sencilla |
+| Concepto | Descripción |
 |---|---|
 | **variable** | Parámetro de entrada (`var.nombre`) con `type`, `description` y `default` opcional. Sin `default` es obligatoria. |
 | **validation** | Regla que se comprueba antes de tocar Azure, con un mensaje de error propio. Usa `can(regex(...))` y `contains(...)`. |
@@ -118,11 +118,11 @@ Web estática de portafolio alojada en una Azure Storage Account (static website
 | **merge()** | Une mapas. Si una clave se repite gana el último mapa; así las etiquetas fijas no se pueden pisar. |
 | **output** | Valor que Terraform devuelve tras el apply (la URL). Se consulta con `terraform output`. |
 | **terraform console** | Consola para evaluar expresiones (`local.x`, `upper(var.y)`) con los valores reales, sin cambiar nada. |
-| **Refactorizar sin cambios** | Reorganizar el código manteniendo los mismos valores debe dar "No changes": es la prueba de que no has roto nada. |
+| **Refactorizar sin cambios** | Reorganizar el código manteniendo los mismos valores debe dar "No changes": demuestra que la refactorización no altera la infraestructura. |
 
-### Fase 3 – El estado remoto
+### Fase 3 – Estado remoto
 
-| Concepto | Explicación sencilla |
+| Concepto | Descripción |
 |---|---|
 | **Remote backend** | El state se guarda en un blob de Azure Storage en vez de en tu PC: no se pierde y lo pueden usar otras personas o un pipeline. |
 | **Bloqueo (state locking)** | Durante `plan`/`apply`, Terraform pone un *lease* sobre el blob; un segundo `apply` a la vez falla en vez de corromper el state. |
@@ -138,7 +138,7 @@ Web estática de portafolio alojada en una Azure Storage Account (static website
 
 ### Fase 4 – CI/CD con GitHub Actions y OIDC
 
-| Concepto | Explicación sencilla |
+| Concepto | Descripción |
 |---|---|
 | **Provider azuread** | Gestiona identidades de Entra ID (aplicaciones, service principals) a través de Microsoft Graph. |
 | **App registration + service principal** | La "cuenta de servicio" de GitHub en Azure: la app es la definición y el SP la instancia a la que se dan roles. |
@@ -171,7 +171,7 @@ perdido, porque los blobs apuntaban a la cuenta por su *nombre*, que no cambiaba
 usan `storage_container_id` (derivado del *ID* de la cuenta), así que un reemplazo de la cuenta también se
 mostraría en los blobs.
 
-**Lección:** antes de cada apply, busca `forces replacement` en el plan.
+**Buena práctica:** revisar siempre el plan en busca de `forces replacement` antes de cada apply.
 
 ### Fase 2
 
@@ -344,7 +344,7 @@ aún no existe) → raíz `init` + `apply` → `bootstrap` apply otra vez (crea 
 | 2 | `Error: No configuration files` | Terraform se ejecutó desde la carpeta padre. Solo lee los `.tf` de la **carpeta actual** (no busca en subcarpetas) | `cd` a la carpeta del proyecto (`Terraform-Azure-Portfolio`, o `bootstrap/` para el bootstrap) y repetir el comando. |
 | 3 | Error `AADSTS50076` al ejecutar plan/apply | El tenant exige **MFA** y el token de la sesión de `az login` no la incluía | `az logout` y después `az login --tenant <ID_TENANT> --scope "https://graph.microsoft.com/.default"`, completando la MFA. El ID del tenant no se escribe en el repo. |
 | 4 | Aviso: `storage_account_name has been deprecated in favour of storage_container_id` (y lo mismo con `storage_container_name`) | En azurerm 4.x el blob debe identificar su contenedor por ID; los atributos antiguos se eliminan en la 5.0 | Usar `storage_container_id = "<ID de la Storage>/blobServices/default/containers/$web"` (en `locals.tf`). Al tener el mismo valor que ya guardaba el state, no reemplaza los blobs. |
-| 5 | Avisos de Git `LF will be replaced by CRLF` | Con `core.autocrlf = true`, Git en Windows convierte LF → CRLF al descargar archivos. `filemd5()` calcula la huella sobre los bytes exactos, así que `index.html` tendría una huella en tu PC (CRLF) y otra en el runner Linux (LF), y cada plan querría reemplazar los blobs | `git config core.autocrlf false` en el repo y `.gitattributes` con `* text=auto eol=lf`, que fuerza LF en cualquier clon sin depender de la configuración local. Se comprueba con `git ls-files --eol` (todo `i/lf w/lf`). Consejo: configurar el editor para guardar con LF. |
+| 5 | Avisos de Git `LF will be replaced by CRLF` | Con `core.autocrlf = true`, Git en Windows convierte LF → CRLF al descargar archivos. `filemd5()` calcula la huella sobre los bytes exactos, así que `index.html` tendría una huella en tu PC (CRLF) y otra en el runner Linux (LF), y cada plan querría reemplazar los blobs | `git config core.autocrlf false` en el repo y `.gitattributes` con `* text=auto eol=lf`, que fuerza LF en cualquier clon sin depender de la configuración local. Se comprueba con `git ls-files --eol` (todo `i/lf w/lf`). El archivo .gitattributes fuerza finales de línea LF en el repositorio, independientemente del editor. |
 | 6 | Riesgo de `AADSTS700213` por el formato del subject | GitHub puede enviar el subject con IDs inmutables (`repo:<usuario>@<id>/<repo>@<id>:...`); si la credencial federada usa el formato clásico (`repo:<usuario>/<repo>:...`), Azure rechaza el token | Resuelto **antes** del primer push: consultar los IDs en la API pública de GitHub (`Invoke-RestMethod https://api.github.com/repos/<usuario>/<repo>` → `id` y `owner.id`) y ponerlos en `github_subject_prefijo`. El primer pipeline funcionó a la primera. |
 | 7 | La regla de rama del environment `dev` (*Deployment branches and tags → main*) no se había guardado | Se perdió al configurar el environment; *Required reviewers* sí quedó activo | Añadida después (ver captura 18). El apply ya estaba protegido por dos capas: el `if:` del workflow (solo push a `main`) y la aprobación manual. Pero el `if:` está en el YAML, que cualquiera con permiso de escritura podría cambiar en su propia rama, y el subject de `dev` no incluye la rama. La regla de rama la aplica **GitHub, fuera del YAML**: ningún job de otra rama puede usar el environment `dev`. Es una **tercera capa** independiente del código. |
 
@@ -354,7 +354,7 @@ aún no existe) → raíz `init` + `apply` → `bootstrap` apply otra vez (crea 
 
 - **Una sola identidad para `plan` y `apply`.** Las dos credenciales federadas pertenecen al mismo service principal (Contributor), y el environment `plan` no tiene reglas. Un job de cualquier rama con `environment: plan` tiene permisos de escritura, aunque el workflow solo ejecute `plan`. El riesgo es bajo, porque solo quien tiene permiso de escritura en el repo puede hacer push y los forks no ejecutan nada. La mejora sería una segunda identidad de solo lectura para el plan.
 - **El state de `bootstrap/` es local.** Está fuera de Git, con una copia de seguridad aparte. Se podría migrar a la propia Storage del state una vez creada.
-- **"Allow administrators to bypass configured protection rules"** está activado en el environment `dev`. Como administrador del repo, puedes saltarte la aprobación. Para una protección estricta, se desactiva.
+- **"Allow administrators to bypass configured protection rules"** está activado en el environment `dev`. Nota: los administradores del repositorio pueden saltarse esta aprobación; en un equipo se activaría la opción que lo impide. Para una protección estricta, se desactiva.
 - **Un solo entorno (`dev`).** Las variables ya admiten `test` y `prod`: bastaría otro `key` de state, otro tfvars y otro environment de GitHub.
 - **Sin dominio propio ni CDN.** Azure Front Door añadiría dominio, HTTPS propio y caché, pero tiene coste.
 
